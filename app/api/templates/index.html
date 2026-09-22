@@ -89,8 +89,8 @@
 
   <h2>Source videos</h2>
   <div class="card"><table>
-    <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Added</th></tr></thead>
-    <tbody id="sources-body"><tr><td colspan="4" class="empty">No sources registered.</td></tr></tbody>
+    <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Added</th><th></th></tr></thead>
+    <tbody id="sources-body"><tr><td colspan="5" class="empty">No sources registered.</td></tr></tbody>
   </table></div>
 
   <h2>Failed jobs</h2>
@@ -137,8 +137,9 @@ async function refresh() {
     $('sources-body').innerHTML = sources.length ? sources.map(s => `
       <tr><td>${esc(s.name)}</td><td>${esc(s.source_type)}</td>
       <td><span class="status ${esc(s.status)}">${esc(s.status)}</span></td>
-      <td>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</td></tr>`).join('')
-      : '<tr><td colspan="4" class="empty">No sources registered.</td></tr>';
+      <td>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</td>
+      <td><button style="padding:4px 10px;font-size:.75rem" onclick="requeue('${s.id}')">↻ Re-queue</button></td></tr>`).join('')
+      : '<tr><td colspan="5" class="empty">No sources registered.</td></tr>';
   } catch (e) { console.error('sources', e); }
 
   try {
@@ -178,6 +179,14 @@ $('upload-btn').onclick = async () => {
 
 refresh();
 setInterval(refresh, 15000);
+
+async function requeue(id) {
+  try {
+    const res = await fetch('/sources/' + id + '/requeue', { method: 'POST' });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Requeue failed');
+    refresh();
+  } catch (e) { alert('Re-queue failed: ' + e.message); }
+}
 </script>
 </body>
 </html>

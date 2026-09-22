@@ -1,10 +1,13 @@
 """Tests for Groq analysis service."""
 import pytest
+import asyncio
 from unittest.mock import Mock, patch, MagicMock
 from typing import List, Dict
 
 from app.services.groq import GroqAnalysisService
 from app.config import get_settings
+
+pytest_plugins = ("pytest_asyncio",)
 
 
 def test_groq_service_init():
@@ -77,3 +80,47 @@ def test_cache():
     cached = service.get_cached_analysis(segments)
     assert cached is not None
     assert len(cached) == 1
+
+
+@pytest.mark.asyncio
+async def test_analyze_candidates_end_to_end():
+    """Regression test: analyze_candidates must actually await Groq calls
+    and return filtered, deduplicated candidates (not a coroutine)."""
+    service = GroqAnalysisService()
+    segments = [
+        {"id": 0, "start": 0.0, "end": 10.0, "text": "wow incredible gameplay moment here", "language": "en"},
+        {"id": 1, "start": 10.0, "end": 20.0, "text": "that was so funny I cannot believe it", "language": "en"},
+    ]
+
+    def fake_chunk(chunk_text, chunk_idx, is_last):
+        return [
+            {"start_time": 2, "end_time": 32, "score": 9.0, "hook": "wow",
+             "reason": "Funny moment", "suggested_title": "Epic Fail"},
+            {"start_time": 5, "end_time": 35, "score": 8.0, "hook": "again",
+             "reason": "Overlaps the first", "suggested_title": "Dupe"},
+            {"start_time": 100, "end_time": 130, "score": 4.0, "hook": "meh",
+             "reason": "Too low", "suggested_title": "Boring"},
+        ]
+
+    with patch.object(service, "_analyze_chunk", side_effect=fake_chunk):
+        result = await service.analyze_candidates(segments, "test_source")
+
+    assert isinstance(result, list)
+    # Score filter (7.0) drops the 4.0; overlap drops the 8.0 dupe
+    assert len(result) == 1
+    assert result[0]["score"] == 9.0
+    assert result[0]["suggested_title"] == "Epic Fail"
+
+
+@pytest.mark.asyncio
+async def test_analyze_candidates_all_chunks_fail():
+    """If every Groq chunk fails, raise loudly instead of silent zero."""
+    service = GroqAnalysisService()
+    segments = [{"id": 0, "start": 0.0, "end": 10.0, "text": "hello", "language": "en"}]
+
+    with patch.object(service, "_analyze_chunk", side_effect=RuntimeError("boom")):
+        try:
+            await service.analyze_candidates(segments, "test_source")
+            assert False, "should have raised"
+        except RuntimeError as e:
+            assert "all" in str(e).lower()

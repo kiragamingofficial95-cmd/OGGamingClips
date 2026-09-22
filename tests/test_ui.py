@@ -82,3 +82,22 @@ def test_download_missing_clip():
         client = _client()
         res = client.get(f"/clips/{uuid.uuid4()}/download")
     assert res.status_code == 404
+
+
+def test_requeue_source():
+    mock_pool = AsyncMock()
+    mock_pool.fetchrow = AsyncMock(
+        return_value={"source_key": "file_abc", "status": "pending"}
+    )
+
+    with patch("app.api.app.get_pool", return_value=mock_pool):
+        client = _client()
+        res = client.post(f"/sources/{uuid.uuid4()}/requeue")
+    assert res.status_code == 200
+    assert res.json()["status"] == "pending"
+
+
+def test_requeue_invalid_id():
+    client = _client()
+    res = client.post("/sources/not-a-uuid/requeue")
+    assert res.status_code == 400

@@ -274,6 +274,25 @@ async def discover_sources():
     return {"status": "discovery_complete"}
 
 
+@app.post("/sources/{source_id}/requeue")
+async def requeue_source(source_id: str):
+    """Reset a source to pending so the worker picks it up again."""
+    try:
+        source_uuid = uuid.UUID(source_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid source ID")
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "UPDATE sources SET status = 'pending', updated_at = NOW() WHERE id = $1 "
+        "RETURNING source_key, status",
+        source_uuid,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Source not found")
+    logger.info("Source requeued", source_key=row["source_key"])
+    return {"source_key": row["source_key"], "status": row["status"]}
+
+
 @app.get("/stats")
 async def get_stats():
     """Get detailed statistics."""

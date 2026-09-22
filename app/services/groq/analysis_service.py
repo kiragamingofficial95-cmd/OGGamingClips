@@ -29,7 +29,7 @@ class GroqAnalysisService:
         text_snippet = " ".join(s.get("text", "") for s in content[:10])
         return str(hash(text_snippet))
 
-    def analyze_candidates(
+    async def analyze_candidates(
         self,
         segments: List[Dict],
         source_id: str,
@@ -57,22 +57,33 @@ class GroqAnalysisService:
 
         # Build chunks from segments
         chunks = self._build_chunks(segments)
+        if not chunks:
+            return []
+
         all_candidates = []
+        chunks_succeeded = 0
 
         for chunk_idx, chunk in enumerate(chunks):
+            is_last = chunk_idx == len(chunks) - 1
             try:
-                candidates = retry_with_backoff(
-                    lambda: asyncio.run(
-                        self._analyze_chunk(chunk, chunk_idx, chunk_idx == len(chunks) - 1)
+                candidates = await retry_with_backoff(
+                    lambda c=chunk, i=chunk_idx, last=is_last: asyncio.to_thread(
+                        self._analyze_chunk, c, i, last
                     ),
                     max_retries=self.settings.WORKER_MAX_RETRIES,
                     base_delay=self.settings.WORKER_RETRY_BACKOFF,
                     retry_exceptions=(Exception,),
                 )
                 all_candidates.extend(candidates)
+                chunks_succeeded += 1
             except Exception as e:
                 logger.error("Failed to analyze chunk", chunk=chunk_idx, error=str(e))
                 continue
+
+        if chunks_succeeded == 0:
+            raise RuntimeError(
+                "Groq analysis failed for all %d chunk(s); check GROQ_API_KEY and rate limits" % len(chunks)
+            )
 
         # Filter and deduplicate
         filtered = self._filter_candidates(all_candidates, min_score, min_duration, max_duration)
@@ -84,8 +95,8 @@ class GroqAnalysisService:
         logger.info("Analysis complete", source_id=source_id, candidates=len(deduplicated))
         return deduplicated
 
-    async def _analyze_chunk(self, chunk_text: str, chunk_idx: int, is_last: bool) -> List[Dict]:
-        """Send a chunk to Groq for clip candidate analysis."""
+    def _analyze_chunk(self, chunk_text: str, chunk_idx: int, is_last: bool) -> List[Dict]:
+        """Send a chunk to Groq for clip candidate analysis (blocking; call in a thread)."""
         client = self._get_client()
 
         prompt = f"""Analyze the following transcript chunk and identify potential short-form clip moments for gaming content on Instagram.

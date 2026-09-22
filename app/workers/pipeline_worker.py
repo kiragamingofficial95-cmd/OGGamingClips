@@ -159,8 +159,7 @@ class PipelineWorker:
             return cached
 
         candidates = await retry_with_backoff(
-            lambda: asyncio.to_thread(
-                self.groq.analyze_candidates,
+            lambda: self.groq.analyze_candidates(
                 transcript.content,
                 str(source_id),
             ),
