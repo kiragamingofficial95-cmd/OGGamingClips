@@ -303,7 +303,7 @@ class PipelineWorker:
         pool = await get_pool()
         await pool.execute("""
             UPDATE processing_jobs SET status = 'failed', error = $1, completed_at = NOW()
-            WHERE id = $1
+            WHERE id = $2
         """, error, job_id)
 
     async def _get_existing_transcript(self, source_id: uuid.UUID) -> Optional[Transcript]:
