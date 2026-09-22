@@ -49,7 +49,7 @@ async def health_check():
 async def dashboard():
     """Get today's dashboard overview."""
     pool = await get_pool()
-    today = date.today().isoformat()
+    today = date.today()
 
     stats = await pool.fetchrow(
         "SELECT * FROM daily_stats WHERE date = $1", today
@@ -57,7 +57,7 @@ async def dashboard():
 
     if not stats:
         return {
-            "today": today,
+            "today": today.isoformat(),
             "clips_generated": 0,
             "target": settings.DAILY_CLIP_TARGET,
             "progress": "0%",
@@ -89,7 +89,7 @@ async def dashboard():
     )
 
     return {
-        "today": today,
+        "today": today.isoformat(),
         "clips_generated": clips_generated,
         "target": target,
         "progress": f"{progress}%",

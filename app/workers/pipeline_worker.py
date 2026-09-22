@@ -356,7 +356,7 @@ class PipelineWorker:
 
     async def _update_daily_stats(self, new_clips: int):
         pool = await get_pool()
-        today = date.today().isoformat()
+        today = date.today()
         await pool.execute("""
             INSERT INTO daily_stats (date, clips_generated, clips_target, sources_processed)
             VALUES ($1, $2, $3, 1)
@@ -368,7 +368,7 @@ class PipelineWorker:
 
     async def _check_daily_target(self):
         pool = await get_pool()
-        today = date.today().isoformat()
+        today = date.today()
         row = await pool.fetchrow("SELECT clips_generated FROM daily_stats WHERE date = $1", today)
         if row and row["clips_generated"] >= settings.DAILY_CLIP_TARGET:
             logger.info("Daily target reached", generated=row["clips_generated"], target=settings.DAILY_CLIP_TARGET)
