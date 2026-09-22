@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "Dockerfile",
+      "dist": "app"
+    }
+  ],
+  "deploy": {
+    "restartPolicyType": "on-failure",
+    "restartPolicyMaxRetries": 3,
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 15
+  }
+}

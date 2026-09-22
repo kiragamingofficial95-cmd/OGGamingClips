@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "${HEALTH_CHECK_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - DAILY_CLIP_TARGET=${DAILY_CLIP_TARGET:-10}
+      - MIN_CLIP_SCORE=${MIN_CLIP_SCORE:-7}
+      - MIN_CLIP_DURATION=${MIN_CLIP_DURATION:-20}
+      - MAX_CLIP_DURATION=${MAX_CLIP_DURATION:-60}
+      - STORAGE_PROVIDER=local
+      - STORAGE_BASE_PATH=/data/clips
+    volumes:
+      - clip_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${PG_USER:-user}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-password}
+      POSTGRES_DB: ${PG_DATABASE:-oggamingclips}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-user} -d ${PG_DATABASE:-oggamingclips}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  clip_data:
+  pg_data:
