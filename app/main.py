@@ -51,35 +51,25 @@ async def stop_worker():
 
 
 def create_app():
-    """Create the combined FastAPI + worker application."""
+    """Create the combined FastAPI + worker application on a single event loop."""
     import uvicorn
 
     settings = get_settings()
     logger.info("OGGamingClips starting", mode="worker+api")
 
-    # Run migrations
-    asyncio.run(run_migrations())
-
-    # Register signal handlers for graceful shutdown
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    def handle_sigterm(*args):
-        logger.info("SIGTERM received, shutting down")
-        loop.call_soon_threadsafe(lambda: asyncio.create_task(stop_worker()))
-        loop.call_soon_threadsafe(loop.stop)
+    # Run migrations on the same loop
+    loop.run_until_complete(run_migrations())
 
-    def handle_sigint(*args):
-        logger.info("SIGINT received, shutting down")
-        loop.call_soon_threadsafe(lambda: asyncio.create_task(stop_worker()))
-        loop.call_soon_threadsafe(loop.stop)
+    # Start worker as a background task on the same loop
+    global worker, worker_task
+    worker = PipelineWorker()
+    logger.info("Starting pipeline worker", target=settings.DAILY_CLIP_TARGET)
+    worker_task = loop.create_task(worker.start())
 
-    signal.signal(signal.SIGTERM, handle_sigterm)
-    signal.signal(signal.SIGINT, handle_sigint)
-
-    # Start worker
-    asyncio.run(start_worker())
-
-    # Start FastAPI server (Railway routes to $PORT)
+    # FastAPI server (Railway routes to $PORT)
     config = uvicorn.Config(
         fastapi_app,
         host="0.0.0.0",
@@ -89,14 +79,26 @@ def create_app():
     )
     server = uvicorn.Server(config)
 
-    async def run_server():
-        await server.serve()
+    def handle_signal(*args):
+        logger.info("Shutdown signal received")
+        if worker:
+            worker.running = False
+        server.should_exit = True
 
-    # Run both
-    loop.run_until_complete(asyncio.gather(
-        run_server(),
-        return_exceptions=True,
-    ))
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, handle_signal)
+        except NotImplementedError:
+            signal.signal(sig, handle_signal)
+
+    try:
+        loop.run_until_complete(server.serve())
+    finally:
+        if worker:
+            worker.running = False
+        loop.run_until_complete(close_pool())
+        loop.close()
+        logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":
