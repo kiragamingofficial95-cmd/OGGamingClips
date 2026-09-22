@@ -27,7 +27,7 @@ settings = get_settings()
 
 class PipelineWorker:
     def __init__(self):
-        self._whisper = None
+        self._transcriber = None
         self.groq = GroqAnalysisService()
         self.ffmpeg = FFmpegService()
         self.storage = StorageService()
@@ -37,11 +37,17 @@ class PipelineWorker:
         self._today = date.today().isoformat()
 
     @property
+    def transcriber(self):
+        # Groq Whisper API: no local torch needed, works on Railway free tier
+        if self._transcriber is None:
+            from app.services.transcription import GroqTranscriptionService
+            self._transcriber = GroqTranscriptionService()
+        return self._transcriber
+
+    @property
     def whisper(self):
-        if self._whisper is None:
-            from app.services.transcription import WhisperService
-            self._whisper = WhisperService()
-        return self._whisper
+        # Backwards-compatible alias
+        return self.transcriber
 
     async def start(self):
         """Start the pipeline worker."""

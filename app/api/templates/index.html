@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OGGamingClips Dashboard</title>
+<style>
+  :root { --bg: #0f1117; --card: #1a1e2a; --accent: #7c3aed; --green: #22c55e; --red: #ef4444; --text: #e5e7eb; --muted: #9ca3af; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  h2 { font-size: 1.1rem; margin: 24px 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .sub { color: var(--muted); margin-bottom: 20px; font-size: .9rem; }
+  .grid { display: grid; gap: 16px; }
+  .stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .card { background: var(--card); border-radius: 12px; padding: 16px; border: 1px solid #262c3d; }
+  .stat-num { font-size: 1.8rem; font-weight: 700; }
+  .stat-label { color: var(--muted); font-size: .8rem; margin-top: 4px; }
+  .progress-wrap { margin-top: 12px; }
+  .progress-bar { height: 10px; background: #262c3d; border-radius: 6px; overflow: hidden; margin-top: 6px; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); transition: width .5s; }
+  .dropzone { border: 2px dashed #3b4256; border-radius: 12px; padding: 32px; text-align: center; cursor: pointer; transition: border-color .2s; }
+  .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: #1e1b33; }
+  .dropzone input { display: none; }
+  .row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  input[type=text] { flex: 1; min-width: 200px; background: #0f1117; border: 1px solid #3b4256; color: var(--text); border-radius: 8px; padding: 10px 12px; }
+  button, .btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; cursor: pointer; font-weight: 600; text-decoration: none; display: inline-block; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .btn-green { background: var(--green); }
+  .msg { margin-top: 10px; font-size: .9rem; min-height: 1.2em; }
+  .msg.ok { color: var(--green); } .msg.err { color: var(--red); }
+  .clips { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .clip-card video { width: 100%; border-radius: 8px; background: #000; max-height: 320px; }
+  .clip-title { font-weight: 700; margin: 10px 0 4px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .chip { background: #262c3d; border-radius: 20px; padding: 3px 10px; font-size: .75rem; color: var(--muted); }
+  .chip.score { background: #1e3a2b; color: var(--green); }
+  .caption { font-size: .85rem; color: var(--muted); margin: 6px 0; white-space: pre-wrap; max-height: 80px; overflow: hidden; }
+  .tags { font-size: .75rem; color: var(--accent); margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #262c3d; }
+  th { color: var(--muted); font-weight: 600; }
+  .status { padding: 2px 10px; border-radius: 12px; font-size: .75rem; }
+  .status.pending { background: #3a3320; color: #fbbf24; }
+  .status.processing { background: #1e3a5f; color: #60a5fa; }
+  .status.completed { background: #1e3a2b; color: var(--green); }
+  .status.failed { background: #3f1d1d; color: var(--red); }
+  .err-box { background: #2a1515; border: 1px solid #5f2222; border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: .8rem; }
+  .empty { color: var(--muted); padding: 20px; text-align: center; }
+  footer { margin-top: 30px; color: var(--muted); font-size: .75rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>🎬 OGGamingClips</h1>
+  <div class="sub">ForgeGUI Clipping [Roblox] by BloxClips · auto-refreshes every 15s</div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <strong id="today-label">Today</strong>
+      <strong id="progress-label">0 / 10</strong>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="grid stats" style="margin-top:14px">
+      <div><div class="stat-num" id="st-queued">0</div><div class="stat-label">Queued</div></div>
+      <div><div class="stat-num" id="st-processing">0</div><div class="stat-label">Processing</div></div>
+      <div><div class="stat-num" id="st-completed">0</div><div class="stat-label">Completed</div></div>
+      <div><div class="stat-num" id="st-failed">0</div><div class="stat-label">Failed</div></div>
+      <div><div class="stat-num" id="st-sources">0</div><div class="stat-label">Pending sources</div></div>
+    </div>
+  </div>
+
+  <h2>Upload source footage</h2>
+  <div class="card">
+    <div class="dropzone" id="dropzone">
+      <div style="font-size:2rem">📤</div>
+      <div>Drag &amp; drop a video here, or click to browse</div>
+      <div style="color:var(--muted);font-size:.8rem;margin-top:4px">.mp4 · .mov · .avi · .mkv · .webm — only footage you are authorized to use</div>
+      <input type="file" id="file-input" accept="video/*,.mkv">
+    </div>
+    <div class="row">
+      <input type="text" id="campaign-input" value="ForgeGUI Clipping [Roblox]" placeholder="Campaign ID">
+      <button id="upload-btn">Upload &amp; Queue</button>
+    </div>
+    <div class="msg" id="upload-msg"></div>
+  </div>
+
+  <h2>Finished clips <span style="font-weight:400" id="clips-count"></span></h2>
+  <div class="grid clips" id="clips-grid"><div class="empty">No clips yet — upload footage to get started.</div></div>
+
+  <h2>Source videos</h2>
+  <div class="card"><table>
+    <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Added</th></tr></thead>
+    <tbody id="sources-body"><tr><td colspan="4" class="empty">No sources registered.</td></tr></tbody>
+  </table></div>
+
+  <h2>Failed jobs</h2>
+  <div id="failed-list"><div class="empty">No failures. 🎉</div></div>
+
+  <footer>Clips are saved for manual upload to Instagram / Whop — nothing auto-posts.</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function refresh() {
+  try {
+    const d = await (await fetch('/dashboard')).json();
+    $('today-label').textContent = 'Today · ' + d.today;
+    $('progress-label').textContent = d.clips_generated + ' / ' + d.target + ' clips';
+    $('progress-fill').style.width = Math.min(100, d.target ? d.clips_generated / d.target * 100 : 0) + '%';
+    $('st-queued').textContent = d.queued; $('st-processing').textContent = d.processing;
+    $('st-completed').textContent = d.completed; $('st-failed').textContent = d.failed;
+    $('st-sources').textContent = d.sources;
+  } catch (e) { console.error('dashboard', e); }
+
+  try {
+    const { clips } = await (await fetch('/dashboard/clips?status=completed&limit=50')).json();
+    $('clips-count').textContent = clips.length ? `(${clips.length})` : '';
+    $('clips-grid').innerHTML = clips.length ? clips.map(c => `
+      <div class="card clip-card">
+        <video controls preload="metadata" src="/clips/${c.id}/download"></video>
+        <div class="clip-title">${esc(c.title || 'Untitled clip')}</div>
+        <div class="chips">
+          <span class="chip score">★ ${c.ai_score ?? '–'}</span>
+          <span class="chip">${c.duration_seconds ? Number(c.duration_seconds).toFixed(1) + 's' : ''}</span>
+          <span class="chip">${esc(c.resolution || '')}</span>
+        </div>
+        <div class="caption">${esc(c.caption || '')}</div>
+        <div class="tags">${esc((c.hashtags || []).join(' '))}</div>
+        <a class="btn btn-green" href="/clips/${c.id}/download" download>⬇ Download MP4</a>
+      </div>`).join('')
+      : '<div class="empty">No clips yet — upload footage to get started.</div>';
+  } catch (e) { console.error('clips', e); }
+
+  try {
+    const { sources } = await (await fetch('/dashboard/sources')).json();
+    $('sources-body').innerHTML = sources.length ? sources.map(s => `
+      <tr><td>${esc(s.name)}</td><td>${esc(s.source_type)}</td>
+      <td><span class="status ${esc(s.status)}">${esc(s.status)}</span></td>
+      <td>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="empty">No sources registered.</td></tr>';
+  } catch (e) { console.error('sources', e); }
+
+  try {
+    const { failed_jobs } = await (await fetch('/dashboard/failed')).json();
+    $('failed-list').innerHTML = failed_jobs.length ? failed_jobs.map(j => `
+      <div class="err-box"><strong>${esc(j.job_type)}</strong> · ${j.created_at ? new Date(j.created_at).toLocaleString() : ''}<br>${esc(j.error || 'unknown error')}</div>`).join('')
+      : '<div class="empty">No failures. 🎉</div>';
+  } catch (e) { console.error('failed', e); }
+}
+
+let selectedFile = null;
+const dz = $('dropzone'), fi = $('file-input');
+dz.onclick = () => fi.click();
+fi.onchange = () => { selectedFile = fi.files[0]; dz.querySelector('div:nth-child(2)').textContent = selectedFile ? '📎 ' + selectedFile.name : 'Drag & drop a video here, or click to browse'; };
+['dragover','dragenter'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
+['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
+dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) { selectedFile = e.dataTransfer.files[0]; dz.querySelector('div:nth-child(2)').textContent = '📎 ' + selectedFile.name; } });
+
+$('upload-btn').onclick = async () => {
+  const msg = $('upload-msg');
+  if (!selectedFile) { msg.className = 'msg err'; msg.textContent = 'Pick a video file first.'; return; }
+  const btn = $('upload-btn'); btn.disabled = true;
+  msg.className = 'msg'; msg.textContent = 'Uploading…';
+  try {
+    const form = new FormData();
+    form.append('file', selectedFile);
+    form.append('campaign_id', $('campaign-input').value);
+    const res = await fetch('/upload', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    msg.className = 'msg ok'; msg.textContent = '✓ Queued: ' + data.source.name;
+    selectedFile = null; fi.value = '';
+    refresh();
+  } catch (e) { msg.className = 'msg err'; msg.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
+};
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

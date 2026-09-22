@@ -1,16 +1,23 @@
 """FastAPI application for the dashboard."""
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from typing import Optional
 from datetime import date, datetime
+from pathlib import Path
+import shutil
 import uuid
 
 from app.config import get_settings
 from app.database.connection import get_pool, close_pool
 from app.utils.logger import get_logger
+from app.utils.validators import sanitize_title
 
 logger = get_logger("api")
 settings = get_settings()
+
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+VALID_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
 app = FastAPI(
     title="OGGamingClips Dashboard",
@@ -43,6 +50,90 @@ async def shutdown():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/", include_in_schema=False)
+async def serve_dashboard_ui():
+    """Serve the dashboard web UI."""
+    index = TEMPLATES_DIR / "index.html"
+    if not index.exists():
+        raise HTTPException(status_code=500, detail="Dashboard UI not installed")
+    return FileResponse(str(index), media_type="text/html")
+
+
+@app.post("/upload")
+async def upload_source(
+    file: UploadFile = File(...),
+    campaign_id: Optional[str] = Form(default="ForgeGUI Clipping [Roblox]"),
+):
+    """Upload a source video file and queue it for processing.
+
+    Only accepts actual video files. The file is stored in the configured
+    sources folder and registered in PostgreSQL exactly once.
+    """
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in VALID_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type '{ext}'. Allowed: {sorted(VALID_VIDEO_EXTENSIONS)}",
+        )
+
+    from app.workers.pipeline_worker import PipelineWorker
+
+    sources_dir = Path(settings.SOURCES_FOLDER)
+    sources_dir.mkdir(parents=True, exist_ok=True)
+
+    stem = sanitize_title(Path(file.filename).stem) or "upload"
+    dest = sources_dir / f"{stem}_{uuid.uuid4().hex[:8]}{ext}"
+    try:
+        with open(dest, "wb") as out:
+            shutil.copyfileobj(file.file, out)
+    finally:
+        await file.close()
+
+    logger.info("Source uploaded", filename=file.filename, dest=str(dest))
+
+    worker = PipelineWorker()
+    try:
+        source = await worker.register_source(
+            name=stem,
+            source_type="file",
+            file_path=str(dest),
+            campaign_id=campaign_id or None,
+            is_authorized=True,
+        )
+    except ValueError as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"source": source.to_dict(), "message": "Upload complete, queued for processing"}
+
+
+@app.get("/clips/{clip_id}/download")
+async def download_clip(clip_id: str):
+    """Download a finished clip MP4 file."""
+    try:
+        clip_uuid = uuid.UUID(clip_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid clip ID")
+
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT * FROM clips WHERE id = $1", clip_uuid)
+    if not row:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    if row["status"] != "completed" or not row["clip_path"]:
+        raise HTTPException(status_code=409, detail=f"Clip is not ready (status: {row['status']})")
+
+    clip_path = Path(row["clip_path"])
+    if not clip_path.exists():
+        raise HTTPException(status_code=404, detail="Clip file no longer on disk (ephemeral storage was recycled)")
+
+    filename = sanitize_title(row["title"] or "clip") or "clip"
+    return FileResponse(
+        str(clip_path),
+        media_type="video/mp4",
+        filename=f"{filename}.mp4",
+    )
 
 
 @app.get("/dashboard")

@@ -1,0 +1,1 @@
+query serviceInstance($envId: String!, $svcId: String!) { serviceInstance(environmentId: $envId, serviceId: $svcId) { id name status } }
